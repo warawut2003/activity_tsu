@@ -1,0 +1,41 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  // output   = "../app/generated/prisma" ลบออก
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model Student {
+  std_id String @id @default(uuid())
+  name String
+  activities StudentActivity[]
+}
+
+model StudentActivity {
+  std_act_id String @id @default(uuid())
+  title String
+  detail String?
+  date DateTime
+  studentId String
+  student Student @relation(fields: [studentId], references: [std_id])
+  photos StudentActivityPhoto[]
+}
+
+model StudentActivityPhoto {
+  id String @id @default(uuid())
+  filename String
+  url String
+  createdAt DateTime @default(now())
+  activityId String
+  activity StudentActivity @relation(fields: [activityId], references: [std_act_id])
+}

@@ -1,0 +1,38 @@
+services : 
+
+  next-app:
+    container_name: activity_tsu_next_app
+    build : 
+      context : .
+      dockerfile : Dockerfile
+    ports :
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      # - /app/.next
+    environment :
+      - DATABASE_URL=postgres://tsu652021068:652021068@db:5432/activity_tsu
+    depends_on :
+      - db
+  db :
+    container_name: activity_tsu_db
+    image: postgres:17-alpine
+    environment :
+      POSTGRES_USER : tsu652021068
+      POSTGRES_PASSWORD : 652021068
+      POSTGRES_DB : activity_tsu
+    ports :
+      - "5432:5432"
+    volumes :
+      - postgres_data:/var/lib/postgresql/data
+
+  adminer :
+    container_name: activity_tsu_adminer
+    image: adminer
+    restart: always
+    ports :
+      - 8080:8080
+
+volumes :
+  postgres_data :
