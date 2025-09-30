@@ -16,26 +16,28 @@ datasource db {
 
 
 model Student {
-  std_id String @id @default(uuid())
-  name String
+  std_id String @id
+  name   String
   activities StudentActivity[]
 }
 
 model StudentActivity {
-  std_act_id String @id @default(uuid())
-  title String
-  detail String?
-  date DateTime
-  studentId String
-  student Student @relation(fields: [studentId], references: [std_id])
-  photos StudentActivityPhoto[]
+  std_act_id String                 @id @default(uuid())
+  title      String
+  detail     String?
+  date       DateTime
+  studentId  String
+  student    Student                @relation(fields: [studentId], references: [std_id])
+  photos     StudentActivityPhoto[]
 }
 
 model StudentActivityPhoto {
-  id String @id @default(uuid())
-  filename String
-  url String
-  createdAt DateTime @default(now())
+  id         String          @id @default(uuid())
+  filename   String
+  url        String
+  filetype   String?
+  filesize   Int?
+  createdAt  DateTime        @default(now())
   activityId String
   activity StudentActivity @relation(fields: [activityId], references: [std_act_id])
 }

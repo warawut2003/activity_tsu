@@ -1,86 +1,101 @@
-import { NextRequest , NextResponse }  from "next/server";
-import formidable from 'formidable';
+import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
+import path from "path";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { v4 as uuidv4 } from 'uuid';
+import { writeFile } from 'fs/promises';
 
-export const config = {
-    api : {
-        bodyParser : false,
-    }
-}
+const prisma = new PrismaClient();
 
-async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
-    const reader = stream.getReader();
-    const chunks: Uint8Array[] = [];
+export async function POST(req: NextRequest) {
+    // 1. อ่าน FormData และดึงข้อมูลที่จำเป็นออกมาทันที
+    // การทำเช่นนี้จะทำให้ถ้า req.formData() มีปัญหา จะเกิด error ที่นี่เลย
+    const formData = await req.formData();
+    const title = formData.get('title') as string;
+    const detail = formData.get('detail') as string | null;
+    const date = formData.get('date') as string;
+    const studentId = formData.get('studentId') as string;
+    const files = formData.getAll('file') as File[];
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
-        }
-        if (value) {
-            chunks.push(value);
-        }
-    }
-    return Buffer.concat(chunks);
-}
-
-
-export async function POST(req : NextRequest){
     try {
-        const uploadDir = 'public/uploads';
-        // ตรวจสอบและสร้างโฟลเดอร์ uploads หากยังไม่มี (เปลี่ยนเป็นแบบ async)
-        await fs.promises.mkdir(uploadDir, { recursive: true });
-
-        const formData = await req.formData();
-        const files = formData.getAll('file') as File[];
-        const uploaderId = formData.get('uploaderId') as string;
+        // 2. ย้ายการตรวจสอบข้อมูลมาไว้ใน try block
+        // ข้อมูลที่จำเป็นสำหรับการสร้างกิจกรรม
+        if (!title || !date || !studentId) {
+            return NextResponse.json({ success: false, message: "ข้อมูลกิจกรรมไม่ครบถ้วน" }, { status: 400 });
+        }
 
         if (!files || files.length === 0) {
-            return NextResponse.json({ message: 'ไม่พบไฟล์ที่อัปโหลด' }, { status: 400 });
+            return NextResponse.json({ success: false, message: "ไม่พบไฟล์ที่อัปโหลด" }, { status: 400 });
         }
 
-        const uploadedFileData = [];
+        const photosData: Prisma.StudentActivityPhotoCreateManyInput[] = [];
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+        await fs.promises.mkdir(uploadDir, { recursive: true }); // สร้างโฟลเดอร์ถ้ายังไม่มี
 
-        for (const file of files) {
-            // เช็คขนาดไฟล์ด้วยตนเอง
-            const maxFileSize = 5 * 1024 * 1024; // 5MB
-            if (file.size > maxFileSize) {
-                // ส่ง response กลับไปทันทีถ้าไฟล์ใหญ่เกิน
-                return NextResponse.json({ message: `ขนาดไฟล์ ${file.name} เกิน 5MB` }, { status: 413 });
+        // 3. ใช้ Prisma Transaction เพื่อจัดการ business logic
+        const result = await prisma.$transaction(async (tx) => {
+            // 2.1 สร้าง StudentActivity ก่อน
+            const newActivity = await tx.studentActivity.create({
+                data: {
+                    title: title.trim(),
+                    detail: detail,
+                    date: new Date(date),
+                    student: {
+                        connect: { std_id: studentId }
+                    }
+                }
+            });
+
+            // 2.2 วนลูปจัดการแต่ละไฟล์
+            for (const file of files) {
+                if (file.size > 5 * 1024 * 1024) { // ไม่เกิน 5MB
+                    console.warn(`Skipping file ${file.name} due to size limit.`);
+                    continue;
+                }
+
+                const bytes = await file.arrayBuffer();
+                const buffer = Buffer.from(bytes);
+
+                // สร้างชื่อไฟล์ใหม่ที่ไม่ซ้ำกัน
+                const fileExtension = path.extname(file.name);
+                const newFilename = `${Date.now()}-${uuidv4()}${fileExtension}`;
+                const filePath = path.join(uploadDir, newFilename);
+
+                await writeFile(filePath, buffer);
+
+                const url = `/uploads/${newFilename}`;
+                photosData.push({
+                    filename: newFilename,
+                    url: url,
+                    activityId: newActivity.std_act_id, // ✅ ใช้ ID ของกิจกรรมที่เพิ่งสร้าง
+                });
             }
 
-            // สร้างชื่อไฟล์ใหม่
-            const uniqueSuffix = uuidv4();
-            const originalName = file.name.replace(/\s/g, '_');
-            const newFilename = `${uniqueSuffix}-${originalName}`;
-            const filepath = `${uploadDir}/${newFilename}`;
+            if (photosData.length === 0) {
+                throw new Error("ไม่มีไฟล์ที่สามารถอัปโหลดได้ (อาจมีขนาดใหญ่เกินไป)");
+            }
 
-            // แปลงไฟล์เป็น Buffer เพื่อบันทึก
-            const buffer = Buffer.from(await file.arrayBuffer());
-            await fs.promises.writeFile(filepath, buffer);
-            
-            uploadedFileData.push({
-                newFilename: newFilename,
-                originalFilename: file.name,
-                filepath: filepath,
-                mimetype: file.type,
-                size: file.size,
+            // 2.3 สร้างข้อมูลรูปภาพทั้งหมด
+            const createdPhotos = await tx.studentActivityPhoto.createManyAndReturn({
+                data: photosData,
             });
-        }
+
+            return { newActivity, createdPhotos };
+        });
         
-        // ส่งข้อมูลที่จำเป็นกลับไป, fields จะมีแค่ uploaderId
+
         return NextResponse.json({ 
-            fields: { uploaderId: [uploaderId] }, // ทำให้โครงสร้างคล้าย formidable
-            files: { file: uploadedFileData } // ทำให้โครงสร้างคล้าย formidable
-        }, { status: 200 });
-    } catch (error: any) {
-        console.error('Upload error:', error);
-
-        if (error.code === 1009) { // formidable's maxTotalFileSize exceeded error code
-            return NextResponse.json({ message: 'ขนาดไฟล์เกิน 5MB' }, { status: 413 }); // 413 Payload Too Large
+            success: true, 
+            activity: result.newActivity,
+            photos: result.createdPhotos 
+        });
+    } catch (error : any) {
+        console.error("Upload error:", error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+             // 4. ใช้ตัวแปร studentId ที่ดึงมาแล้วด้านนอก ซึ่งมั่นใจได้ว่ามีค่า
+             return NextResponse.json({ success: false, message: `ไม่พบรหัสนักศึกษา: ${studentId}` }, { status: 404 });
         }
-
-        return NextResponse.json({ message: 'เกิดข้อผิดพลาดระหว่างการอัปโหลดไฟล์' }, { status: 500 });
+        return NextResponse.json({ success: false, message: `เกิดข้อผิดพลาด: ${error.message}` }, { status: 500 });
     }
+
 }

@@ -5,11 +5,7 @@ const prisma = new PrismaClient();
 async function seedStudent() {
     await prisma.student.createMany({
         data: [
-            { name: "Alice"},
-            { name: "Bob"},
-            { name: "Charlie"},
-            { name: "Dave"},
-            { name: "Eve"},
+           
         ],
     });
 }
