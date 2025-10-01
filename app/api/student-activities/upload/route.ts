@@ -34,17 +34,30 @@ export async function POST(req: NextRequest) {
 
         // 3. ใช้ Prisma Transaction เพื่อจัดการ business logic
         const result = await prisma.$transaction(async (tx) => {
-            // 2.1 สร้าง StudentActivity ก่อน
-            const newActivity = await tx.studentActivity.create({
-                data: {
+            // 2.1 ตรวจสอบว่ามีกิจกรรมนี้สำหรับนักศึกษาคนนี้อยู่แล้วหรือไม่ (Upsert Logic)
+            let activity = await tx.studentActivity.findFirst({
+                where: {
+                    studentId: studentId,
                     title: title.trim(),
-                    detail: detail,
-                    date: new Date(date),
-                    student: {
-                        connect: { std_id: studentId }
+                    // เพื่อความแม่นยำ ควรเช็คเฉพาะวัน ไม่รวมเวลา
+                    date: {
+                        gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+                        lt: new Date(new Date(date).setHours(23, 59, 59, 999)),
                     }
                 }
             });
+
+            // 2.2 ถ้าไม่พบกิจกรรม ให้สร้างใหม่
+            if (!activity) {
+                activity = await tx.studentActivity.create({
+                    data: {
+                        title: title.trim(),
+                        detail: detail,
+                        date: new Date(date),
+                        student: { connect: { std_id: studentId } }
+                    }
+                });
+            }
 
             // 2.2 วนลูปจัดการแต่ละไฟล์
             for (const file of files) {
@@ -67,7 +80,7 @@ export async function POST(req: NextRequest) {
                 photosData.push({
                     filename: newFilename,
                     url: url,
-                    activityId: newActivity.std_act_id, // ✅ ใช้ ID ของกิจกรรมที่เพิ่งสร้าง
+                    activityId: activity.std_act_id, // ✅ ใช้ ID ของกิจกรรมที่มีอยู่หรือเพิ่งสร้าง
                 });
             }
 
@@ -80,13 +93,13 @@ export async function POST(req: NextRequest) {
                 data: photosData,
             });
 
-            return { newActivity, createdPhotos };
+            return { activity, createdPhotos };
         });
         
 
         return NextResponse.json({ 
             success: true, 
-            activity: result.newActivity,
+            activity: result.activity,
             photos: result.createdPhotos 
         });
     } catch (error : any) {

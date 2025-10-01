@@ -11,17 +11,15 @@ services :
       - .:/app
       - /app/node_modules
       # - /app/.next
-    environment :
-      - DATABASE_URL=postgres://tsu652021068:652021068@db:5432/activity_tsu
+    env_file:
+      - ./.env.docker
     depends_on :
       - db
   db :
     container_name: activity_tsu_db
     image: postgres:17-alpine
-    environment :
-      POSTGRES_USER : tsu652021068
-      POSTGRES_PASSWORD : 652021068
-      POSTGRES_DB : activity_tsu
+    env_file:
+      - ./.env.docker
     ports :
       - "5432:5432"
     volumes :

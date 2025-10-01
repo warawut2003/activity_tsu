@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-interface StudentWithActivityCount {
+// Interface สำหรับข้อมูลนักศึกษาที่ได้รับจาก API
+interface Student {
     std_id: string;
     name: string;
     _count: {
@@ -12,7 +13,7 @@ interface StudentWithActivityCount {
 }
 
 export default function StudentsListPage() {
-    const [students, setStudents] = useState<StudentWithActivityCount[]>([]);
+    const [students, setStudents] = useState<Student[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -24,7 +25,7 @@ export default function StudentsListPage() {
                 if (!response.ok) {
                     throw new Error('ไม่สามารถดึงข้อมูลนิสิตได้');
                 }
-                const data = await response.json();
+                const data: Student[] = await response.json();
                 setStudents(data);
             } catch (err: any) {
                 setError(err.message);

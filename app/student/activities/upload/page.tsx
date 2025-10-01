@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 interface UploadedPhoto {
-    id: string; // เพิ่ม id เพื่อใช้ในการลบ
+    id: string; // ✅ แก้ไข: ใช้ 'id' ให้ตรงกับ Primary Key ใน Schema
     url: string;
     filename: string;
 }
@@ -125,10 +125,14 @@ function UploadPageComponent() {
                 throw new Error(result.message || 'เกิดข้อผิดพลาดในการอัปโหลดไฟล์');
             }
 
-            setSuccessMessage(`บันทึกกิจกรรมและอัปโหลด ${result.photos.length} รูปภาพสำเร็จ!`);
-            setUploadedPhotos(prev => [...prev, ...result.photos]);
-            setFiles([]); // Clear selected files after successful upload
-
+            setSuccessMessage(`บันทึกกิจกรรมสำเร็จ! กำลังนำคุณกลับไปหน้ากิจกรรมของนิสิต...`);
+            
+            // หลังจากแสดงข้อความสำเร็จ 2 วินาที จะนำทางกลับไปหน้ากิจกรรมของนิสิต
+            setTimeout(() => {
+                // ใช้ router.push เพื่อไปยังหน้ากิจกรรมของนิสิตคนนั้นๆ
+                // การใช้ router.replace จะทำให้ผู้ใช้กด back กลับมาหน้านี้ไม่ได้ ซึ่งเป็น UX ที่ดีกว่าในกรณีนี้
+                router.replace(`/student/activities`);
+            }, 2000);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -203,7 +207,7 @@ function UploadPageComponent() {
                     <div className="mt-12">
                         <h2 className="text-2xl font-bold mb-6 text-center">รูปภาพที่อัปโหลดสำเร็จ</h2>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                            {uploadedPhotos.map(photo => (
+                            {uploadedPhotos.map((photo) => (
                                 <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden shadow-lg group">
                                     <Image
                                         src={photo.url}
